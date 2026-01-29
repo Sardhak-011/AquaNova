@@ -8,10 +8,9 @@ import os
 app = FastAPI(title="AquaNova Water Quality Predictor", version="1.0")
 
 # Configure CORS
-# Trigger reload
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust this in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -71,9 +70,9 @@ async def predict_disease_risk(data: WaterQualityInput):
         rules_triggered = []
         
         # pH Rules
-        if data.ph < 6.5:
+        if data.ph <= 6:
             rules_triggered.append("pH is too low (Acidic)")
-        elif data.ph > 8.5:
+        elif data.ph >= 8:
             rules_triggered.append("pH is too high (Alkaline)")
             
         # Dissolved Oxygen Rules
