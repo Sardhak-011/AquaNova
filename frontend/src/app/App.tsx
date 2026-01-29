@@ -330,26 +330,40 @@ export default function App() {
     // No interval in simulation mode - static values persist
   }, [isSimulating]);
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!chatInput.trim()) return;
 
-    setChatMessages(prev => [...prev, { role: 'user', text: chatInput }]);
+    const userMsg = chatInput;
+    setChatMessages(prev => [...prev, { role: 'user', text: userMsg }]);
+    setChatInput(''); // Clear input immediately
 
-    // Simulate AI response
-    setTimeout(() => {
-      const responses = [
-        'Based on your current water parameters, everything looks optimal. Keep monitoring the dissolved oxygen levels.',
-        'I recommend checking the filtration system. Turbidity levels are slightly elevated.',
-        'The temperature is within ideal range for Tilapia. Water health score is excellent.',
-        'Consider testing ammonia levels more frequently. I\'ve detected a slight upward trend.'
-      ];
-      setChatMessages(prev => [...prev, {
-        role: 'assistant',
-        text: responses[Math.floor(Math.random() * responses.length)]
-      }]);
-    }, 1000);
+    // Add temporary loading message
+    setChatMessages(prev => [...prev, { role: 'assistant', text: 'Thinking...', isLoading: true }]);
 
-    setChatInput('');
+    try {
+      const response = await fetch('http://localhost:8000/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: userMsg,
+          context: sensorData
+        })
+      });
+
+      const data = await response.json();
+
+      // Remove loading message and add real response
+      setChatMessages(prev => {
+        const filtered = prev.filter(msg => !msg.isLoading);
+        return [...filtered, { role: 'assistant', text: data.response || "I'm not sure, but I'm learning!" }];
+      });
+
+    } catch (error) {
+      setChatMessages(prev => {
+        const filtered = prev.filter(msg => !msg.isLoading);
+        return [...filtered, { role: 'assistant', text: "Connection error. Please check if backend is running." }];
+      });
+    }
   };
 
   return (

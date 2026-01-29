@@ -158,3 +158,59 @@ def get_forecast(request: ForecastRequest):
 async def root():
     mode = "Hybrid (Rules + ML)" if model else "Action-Based Expert Rules"
     return {"message": "AquaNova Water Quality Predictor API", "status": "active", "mode": mode}
+
+# ---------------------------
+# AquaGPT Chatbot Integration
+# ---------------------------
+import google.generativeai as genai
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Configure Gemini
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+    chat_model = genai.GenerativeModel('gemini-flash-latest')
+else:
+    print("WARNING: GEMINI_API_KEY not found in .env")
+    chat_model = None
+
+class ChatRequest(BaseModel):
+    message: str
+    context: dict  # Sensor data
+
+@app.post("/api/chat")
+async def chat_with_aquagpt(request: ChatRequest):
+    if not chat_model:
+        return {"response": "I'm sorry, my brain (API Key) is missing. Please check the backend configuration."}
+    
+    try:
+        # Construct System Prompt with Context
+        sensor_context = (
+            f"Current Water Parameters:\n"
+            f"- Temperature: {request.context.get('temperature', 'N/A')}°C\n"
+            f"- pH: {request.context.get('ph', 'N/A')}\n"
+            f"- Dissolved Oxygen: {request.context.get('dissolved_oxygen', 'N/A')} mg/L\n"
+            f"- Turbidity: {request.context.get('turbidity', 'N/A')} NTU\n"
+            f"- Ammonia: {request.context.get('ammonia', 'N/A')} ppm\n"
+        )
+        
+        system_prompt = (
+            "You are AquaGPT, an expert aquaculture assistant powered by Gemini. "
+            "You are helpful, concise, and knowledgeable about fish farming (specifically Tilapia). "
+            "Analyze the user's question in the context of the provided live water parameters. "
+            "If parameters are critical (e.g., Low Oxygen, High Ammonia), PRIORITIZE giving emergency advice. "
+            "Keep answers short and actionable (under 3 sentences unless asked for detail)."
+        )
+        
+        full_prompt = f"{system_prompt}\n\n{sensor_context}\n\nUser Question: {request.message}"
+        
+        # Generate Response
+        response = chat_model.generate_content(full_prompt)
+        return {"response": response.text}
+        
+    except Exception as e:
+        print(f"Gemini Error: {e}")
+        return {"response": "I'm having trouble connecting to my knowledge base right now. Please try again."}
