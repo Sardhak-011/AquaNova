@@ -1,69 +1,19 @@
-import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card";
-import { Input } from "@/app/components/ui/input";
-import { Label } from "@/app/components/ui/label";
-import { Button } from "@/app/components/ui/button";
-import { AlertTriangle, CheckCircle2, Activity, Loader2 } from "lucide-react";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Activity, TrendingUp, History } from "lucide-react";
 
-interface PredictionResult {
-    disease_level: number;
-    risk_status: string;
-    confidence: number;
-    recommendation: string;
-}
+// Mock historical data
+const generateTrendData = () => {
+    return Array.from({ length: 30 }, (_, i) => ({
+        day: `Day ${i + 1}`,
+        healthScore: 85 + Math.random() * 10 - 5,
+        riskLevel: Math.random() > 0.8 ? 2 : 0
+    }));
+};
+
+const data = generateTrendData();
 
 export function PredictiveAnalysis() {
-    const [loading, setLoading] = useState(false);
-    const [result, setResult] = useState<PredictionResult | null>(null);
-    const [error, setError] = useState<string | null>(null);
-
-    const [formData, setFormData] = useState({
-        temperature: 28.5,
-        ph: 7.2,
-        dissolved_oxygen: 6.8,
-        turbidity: 12.3
-    });
-
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({
-            ...prev,
-            [name]: parseFloat(value) || 0
-        }));
-    };
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoading(true);
-        setError(null);
-        setResult(null);
-
-        try {
-            const response = await fetch('http://localhost:8000/predict', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(formData),
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to fetch prediction');
-            }
-
-            const data = await response.json();
-            if (data.error) {
-                throw new Error(data.error);
-            }
-
-            setResult(data);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'An error occurred');
-        } finally {
-            setLoading(false);
-        }
-    };
-
     return (
         <div className="p-8 max-w-7xl mx-auto space-y-6">
             <div className="flex items-center gap-3 mb-8">
@@ -72,164 +22,88 @@ export function PredictiveAnalysis() {
                 </div>
                 <div>
                     <h1 className="text-3xl font-bold text-white">Predictive Analysis</h1>
-                    <p className="text-slate-400">AI-Powered Disease Risk Assessment</p>
+                    <p className="text-slate-400">Historical Trends & Disease Pattern Recognition</p>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Input Form */}
-                <Card className="bg-slate-900/40 border-white/10 backdrop-blur-xl">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+                {/* Main Trend Chart */}
+                <Card className="lg:col-span-2 bg-slate-900/40 border-white/10 backdrop-blur-xl">
                     <CardHeader>
-                        <CardTitle className="text-white">Water Parameters</CardTitle>
+                        <CardTitle className="text-white flex items-center gap-2">
+                            <TrendingUp className="w-5 h-5 text-teal-400" />
+                            30-Day Health Trend
+                        </CardTitle>
                         <CardDescription className="text-slate-400">
-                            Enter current water quality metrics to analyze disease risk.
+                            Water health score fluctuation over the last month.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <form onSubmit={handleSubmit} className="space-y-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="space-y-2">
-                                    <Label htmlFor="temperature" className="text-slate-300">Temperature (°C)</Label>
-                                    <Input
-                                        id="temperature"
-                                        name="temperature"
-                                        type="number"
-                                        step="0.1"
-                                        value={formData.temperature}
-                                        onChange={handleInputChange}
-                                        className="bg-slate-800/50 border-white/10 text-white focus:border-teal-500/50"
+                        <div className="h-[400px] w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <AreaChart data={data}>
+                                    <defs>
+                                        <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#2dd4bf" stopOpacity={0.3} />
+                                            <stop offset="95%" stopColor="#2dd4bf" stopOpacity={0} />
+                                        </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                                    <XAxis dataKey="day" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+                                    <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} domain={[0, 100]} />
+                                    <Tooltip
+                                        contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#f8fafc' }}
+                                        itemStyle={{ color: '#2dd4bf' }}
                                     />
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label htmlFor="ph" className="text-slate-300">pH Level</Label>
-                                    <Input
-                                        id="ph"
-                                        name="ph"
-                                        type="number"
-                                        step="0.1"
-                                        value={formData.ph}
-                                        onChange={handleInputChange}
-                                        className="bg-slate-800/50 border-white/10 text-white focus:border-teal-500/50"
-                                    />
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label htmlFor="dissolved_oxygen" className="text-slate-300">Dissolved Oxygen (mg/L)</Label>
-                                    <Input
-                                        id="dissolved_oxygen"
-                                        name="dissolved_oxygen"
-                                        type="number"
-                                        step="0.1"
-                                        value={formData.dissolved_oxygen}
-                                        onChange={handleInputChange}
-                                        className="bg-slate-800/50 border-white/10 text-white focus:border-teal-500/50"
-                                    />
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label htmlFor="turbidity" className="text-slate-300">Turbidity (NTU)</Label>
-                                    <Input
-                                        id="turbidity"
-                                        name="turbidity"
-                                        type="number"
-                                        step="0.1"
-                                        value={formData.turbidity}
-                                        onChange={handleInputChange}
-                                        className="bg-slate-800/50 border-white/10 text-white focus:border-teal-500/50"
-                                    />
-                                </div>
-                            </div>
-
-                            <Button
-                                type="submit"
-                                className="w-full bg-gradient-to-r from-teal-500 to-blue-500 hover:from-teal-400 hover:to-blue-400 text-white font-semibold py-6"
-                                disabled={loading}
-                            >
-                                {loading ? (
-                                    <>
-                                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                                        Analyzing Data...
-                                    </>
-                                ) : (
-                                    "Run Health Analysis"
-                                )}
-                            </Button>
-                        </form>
+                                    <Area type="monotone" dataKey="healthScore" stroke="#2dd4bf" fillOpacity={1} fill="url(#colorScore)" />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        </div>
                     </CardContent>
                 </Card>
 
-                {/* Results Display */}
+                {/* Sidebar Stats */}
                 <div className="space-y-6">
-                    {error && (
-                        <Card className="bg-red-500/10 border-red-500/30">
-                            <CardContent className="pt-6">
-                                <div className="flex items-center gap-3 text-red-400">
-                                    <AlertTriangle className="w-5 h-5" />
-                                    <p>{error}</p>
+                    <Card className="bg-slate-900/40 border-white/10 backdrop-blur-xl">
+                        <CardHeader>
+                            <CardTitle className="text-white text-lg">Monthly Insights</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                                <History className="w-5 h-5 text-emerald-400" />
+                                <div>
+                                    <p className="text-xs text-emerald-300 font-bold">AVG HEALTH SCORE</p>
+                                    <p className="text-2xl font-bold text-white">92.4</p>
                                 </div>
-                            </CardContent>
-                        </Card>
-                    )}
-
-                    {result && (
-                        <Card className={`border-white/10 backdrop-blur-xl transition-all duration-500 ${result.risk_status === 'HIGH'
-                                ? 'bg-gradient-to-br from-red-500/10 to-orange-500/10 border-red-500/30'
-                                : 'bg-gradient-to-br from-emerald-500/10 to-teal-500/10 border-emerald-500/30'
-                            }`}>
-                            <CardHeader>
-                                <div className="flex items-center justify-between">
-                                    <CardTitle className="text-white">Analysis Result</CardTitle>
-                                    <div className={`px-4 py-1 rounded-full text-sm font-bold border ${result.risk_status === 'HIGH'
-                                            ? 'bg-red-500/20 text-red-300 border-red-500/30'
-                                            : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                                        }`}>
-                                        {result.risk_status} RISK
-                                    </div>
-                                </div>
-                            </CardHeader>
-                            <CardContent className="space-y-6">
-                                <div className="flex items-center gap-4">
-                                    <div className={`w-16 h-16 rounded-full flex items-center justify-center border-4 ${result.risk_status === 'HIGH'
-                                            ? 'border-red-500/30 text-red-400 bg-red-500/10'
-                                            : 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10'
-                                        }`}>
-                                        <span className="text-lg font-bold">{result.confidence}%</span>
-                                    </div>
-                                    <div>
-                                        <p className="text-slate-400 text-sm">Model Confidence</p>
-                                        <p className="text-white font-medium">Random Forest Classifier</p>
-                                    </div>
-                                </div>
-
-                                <div className="bg-slate-900/50 rounded-lg p-4 border border-white/5">
-                                    <p className="text-sm text-slate-400 mb-2">Recommendation</p>
-                                    <div className="flex items-start gap-3">
-                                        {result.risk_status === 'HIGH' ? (
-                                            <AlertTriangle className="w-5 h-5 text-red-400 mt-0.5" />
-                                        ) : (
-                                            <CheckCircle2 className="w-5 h-5 text-emerald-400 mt-0.5" />
-                                        )}
-                                        <p className="text-white leading-relaxed">{result.recommendation}</p>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    )}
-
-                    {!result && !loading && (
-                        <div className="h-full flex flex-col items-center justify-center p-12 border-2 border-dashed border-white/10 rounded-xl text-center space-y-4">
-                            <div className="w-16 h-16 rounded-full bg-slate-800/50 flex items-center justify-center">
-                                <Activity className="w-8 h-8 text-slate-600" />
                             </div>
-                            <div>
-                                <h3 className="text-lg font-medium text-slate-300">Ready to Analyze</h3>
-                                <p className="text-sm text-slate-500 max-w-xs mx-auto mt-2">
-                                    Enter water parameters and click "Run Health Analysis" to get AI-powered insights.
+
+                            <div className="flex items-center gap-3 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
+                                <Activity className="w-5 h-5 text-indigo-400" />
+                                <div>
+                                    <p className="text-xs text-indigo-300 font-bold">PREDICTIONS MADE</p>
+                                    <p className="text-2xl font-bold text-white">720</p>
+                                </div>
+                            </div>
+
+                            <div className="p-4 rounded-lg bg-slate-800/50 border border-white/5">
+                                <p className="text-sm text-slate-300 leading-relaxed">
+                                    Overall water quality has been stable this month.
+                                    Minor dip observed on Day 12 due to temporary temperature fluctuation.
                                 </p>
                             </div>
-                        </div>
-                    )}
+                        </CardContent>
+                    </Card>
+
+                    <div className="p-6 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-600 border border-white/10 text-center">
+                        <h3 className="text-white font-bold text-lg mb-2">Want to Run Simulations?</h3>
+                        <p className="text-indigo-100 text-sm mb-4">
+                            Test hypothetical scenarios with our new interactive tool.
+                        </p>
+                        <p className="text-xs bg-white/20 inline-block px-3 py-1 rounded-full text-white">
+                            Go to "What-if Simulation" Tab
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>

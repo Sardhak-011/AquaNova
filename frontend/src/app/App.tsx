@@ -15,10 +15,12 @@ import {
   ChevronDown,
   CheckCircle2,
   Target,
-  X
+  X,
+  Info
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { PredictiveAnalysis } from './components/PredictiveAnalysis';
+import { WhatIfSimulation } from './components/WhatIfSimulation';
 
 
 // Mock sensor data generator
@@ -66,7 +68,7 @@ const getHealthScoreGradient = (score: number) => {
 const getSensorStatus = (value: number, type: 'ph' | 'temp' | 'do' | 'turb' | 'salinity' | 'ammonia') => {
   switch (type) {
     case 'ph': return (value < 6.5 || value > 8.5) ? 'critical' : (value < 7.0 || value > 8.0) ? 'warning' : 'optimal';
-    case 'temp': return (value < 24 || value > 32) ? 'critical' : (value < 26 || value > 30) ? 'warning' : 'optimal';
+    case 'temp': return (value < 20 || value > 34) ? 'critical' : 'optimal'; // 20-34 is now completely filtered as optimal/safe per user request
     case 'do': return value < 5.0 ? 'critical' : value < 6.0 ? 'warning' : 'optimal';
     case 'turb': return value > 25 ? 'critical' : value > 15 ? 'warning' : 'optimal';
     case 'salinity': return (value < 10 || value > 20) ? 'warning' : 'optimal';
@@ -81,6 +83,85 @@ const getStatusColor = (status: string) => {
     case 'warning': return 'bg-orange-500/20 border-orange-500/50';
     default: return 'bg-slate-900/40 border-white/10';
   }
+};
+
+const getSuggestion = (type: string, value: number) => {
+  switch (type) {
+    case 'ph':
+      return value < 7.0
+        ? `Raise pH by ${(7.0 - value).toFixed(1)} by adding crushed coral or lime`
+        : value > 8.0
+          ? `Lower pH by ${(value - 8.0).toFixed(1)} by adding peat moss or driftwood`
+          : '';
+    case 'temp':
+      return value < 26
+        ? `Increase Temp by ${(26 - value).toFixed(1)}°C by checking heater`
+        : value > 30
+          ? `Lower Temp by ${(value - 30).toFixed(1)}°C by cooling/shading`
+          : '';
+    case 'do':
+      return value < 6.0
+        ? `Increase Aeration by ${(6.0 - value).toFixed(1)} mg/L (Check air stones)`
+        : '';
+    case 'turb':
+      return value > 15
+        ? `Reduce Turbidity by ${(value - 10).toFixed(1)} NTU (Clean filters/Water change)`
+        : '';
+    case 'ammonia':
+      return value > 0.5
+        ? `Critical: Perform 50% water change & stop feeding`
+        : value > 0.05
+          ? `Warning: Add nitrifying bacteria & monitor`
+          : '';
+    default: return '';
+  }
+};
+
+const SensorCard = ({ title, value, unit, type, data, icon: Icon, colorClass }: any) => {
+  const status = getSensorStatus(value, type);
+  const statusColor = getStatusColor(status);
+  const suggestion = getSuggestion(type, value);
+
+  return (
+    <div className={`${statusColor} backdrop-blur-xl border rounded-xl p-6 transition-colors duration-500 relative group`}>
+      {suggestion && (
+        <div className="absolute top-4 right-4 z-20">
+          <div className="group/info relative">
+            <Info className="w-5 h-5 text-slate-400 cursor-help hover:text-white transition-colors" />
+            <div className="absolute right-0 w-48 p-2 mt-2 text-xs text-white bg-slate-900 border border-white/10 rounded-lg shadow-xl opacity-0 invisible group-hover/info:opacity-100 group-hover/info:visible transition-all z-50">
+              {suggestion}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${status === 'critical' ? 'bg-red-500/20' : colorClass.bg}`}>
+            <Icon className={`w-5 h-5 ${status === 'critical' ? 'text-red-400' : colorClass.text}`} />
+          </div>
+          <div>
+            <p className="text-xs text-slate-400">{title}</p>
+            <p className="text-2xl font-bold">{value.toFixed(type === 'ammonia' ? 3 : type === 'ph' ? 2 : 1)}{unit}</p>
+          </div>
+        </div>
+      </div>
+      <div className="h-16">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data}>
+            <Line
+              type="monotone"
+              dataKey="value"
+              stroke={status === 'critical' ? '#ef4444' : colorClass.stroke}
+              strokeWidth={2}
+              dot={false}
+              animationDuration={300}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
 };
 
 export default function App() {
@@ -247,6 +328,7 @@ export default function App() {
             {[
               { name: 'Live Monitor', icon: Activity },
               { name: 'Predictive Analytics', icon: Brain },
+              { name: 'What-if Simulation', icon: Brain },
               { name: 'Fish Health AI', icon: Eye },
               { name: 'Settings', icon: Settings }
             ].map((item) => (
@@ -475,280 +557,69 @@ export default function App() {
                   </div>
                 </div>
 
+
                 {/* Live Sensor Grid */}
                 <div>
                   <h3 className="text-xl font-bold mb-4">Live Sensor Grid</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {/* pH Sensor */}
-                    <div className={`${getStatusColor(getSensorStatus(sensorData.ph, 'ph'))} backdrop-blur-xl border rounded-xl p-6 transition-colors duration-500`}>
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${getSensorStatus(sensorData.ph, 'ph') === 'critical' ? 'bg-red-500/20' : 'bg-blue-500/20'}`}>
-                            <Droplets className={`w-5 h-5 ${getSensorStatus(sensorData.ph, 'ph') === 'critical' ? 'text-red-400' : 'text-blue-400'}`} />
-                          </div>
-                          <div>
-                            <p className="text-xs text-slate-400">pH Level</p>
-                            <p className="text-2xl font-bold">{sensorData.ph.toFixed(2)}</p>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="h-16">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={phData}>
-                            <Line
-                              type="monotone"
-                              dataKey="value"
-                              stroke={getSensorStatus(sensorData.ph, 'ph') === 'critical' ? '#ef4444' : '#60a5fa'}
-                              strokeWidth={2}
-                              dot={false}
-                              animationDuration={300}
-                            />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-
-                    {/* Temperature Sensor */}
-                    <div className={`${getStatusColor(getSensorStatus(sensorData.temperature, 'temp'))} backdrop-blur-xl border rounded-xl p-6 transition-colors duration-500`}>
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${getSensorStatus(sensorData.temperature, 'temp') === 'critical' ? 'bg-red-500/20' : 'bg-orange-500/20'}`}>
-                            <Thermometer className={`w-5 h-5 ${getSensorStatus(sensorData.temperature, 'temp') === 'critical' ? 'text-red-400' : 'text-orange-400'}`} />
-                          </div>
-                          <div>
-                            <p className="text-xs text-slate-400">Temperature</p>
-                            <p className="text-2xl font-bold">{sensorData.temperature.toFixed(1)}°C</p>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="h-16">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={tempData}>
-                            <Line
-                              type="monotone"
-                              dataKey="value"
-                              stroke={getSensorStatus(sensorData.temperature, 'temp') === 'critical' ? '#ef4444' : '#fb923c'}
-                              strokeWidth={2}
-                              dot={false}
-                              animationDuration={300}
-                            />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-
-                    {/* Dissolved Oxygen */}
-                    <div className={`${getStatusColor(getSensorStatus(sensorData.dissolvedOxygen, 'do'))} backdrop-blur-xl border rounded-xl p-6 transition-colors duration-500`}>
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${getSensorStatus(sensorData.dissolvedOxygen, 'do') === 'critical' ? 'bg-red-500/20' : 'bg-teal-500/20'}`}>
-                            <Wind className={`w-5 h-5 ${getSensorStatus(sensorData.dissolvedOxygen, 'do') === 'critical' ? 'text-red-400' : 'text-teal-400'}`} />
-                          </div>
-                          <div>
-                            <p className="text-xs text-slate-400">Dissolved O₂</p>
-                            <p className="text-2xl font-bold">{sensorData.dissolvedOxygen.toFixed(1)}<span className="text-sm text-slate-400 ml-1">mg/L</span></p>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="h-16">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={doData}>
-                            <Line
-                              type="monotone"
-                              dataKey="value"
-                              stroke={getSensorStatus(sensorData.dissolvedOxygen, 'do') === 'critical' ? '#ef4444' : '#2dd4bf'}
-                              strokeWidth={2}
-                              dot={false}
-                              animationDuration={300}
-                            />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-
-                    {/* Turbidity */}
-                    <div className={`${getStatusColor(getSensorStatus(sensorData.turbidity, 'turb'))} backdrop-blur-xl border rounded-xl p-6 transition-colors duration-500`}>
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${getSensorStatus(sensorData.turbidity, 'turb') === 'critical' ? 'bg-red-500/20' : 'bg-purple-500/20'}`}>
-                            <Eye className={`w-5 h-5 ${getSensorStatus(sensorData.turbidity, 'turb') === 'critical' ? 'text-red-400' : 'text-purple-400'}`} />
-                          </div>
-                          <div>
-                            <p className="text-xs text-slate-400">Turbidity</p>
-                            <p className="text-2xl font-bold">{sensorData.turbidity.toFixed(1)}<span className="text-sm text-slate-400 ml-1">NTU</span></p>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="h-16">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={turbidityData}>
-                            <Line
-                              type="monotone"
-                              dataKey="value"
-                              stroke={getSensorStatus(sensorData.turbidity, 'turb') === 'critical' ? '#ef4444' : '#c084fc'}
-                              strokeWidth={2}
-                              dot={false}
-                              animationDuration={300}
-                            />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-
-                    {/* Salinity */}
-                    <div className={`${getStatusColor(getSensorStatus(sensorData.salinity, 'salinity'))} backdrop-blur-xl border rounded-xl p-6 transition-colors duration-500`}>
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${getSensorStatus(sensorData.salinity, 'salinity') === 'critical' ? 'bg-red-500/20' : 'bg-cyan-500/20'}`}>
-                            <Droplets className={`w-5 h-5 ${getSensorStatus(sensorData.salinity, 'salinity') === 'critical' ? 'text-red-400' : 'text-cyan-400'}`} />
-                          </div>
-                          <div>
-                            <p className="text-xs text-slate-400">Salinity</p>
-                            <p className="text-2xl font-bold">{sensorData.salinity.toFixed(1)}<span className="text-sm text-slate-400 ml-1">ppt</span></p>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="h-16">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={salinityData}>
-                            <Line
-                              type="monotone"
-                              dataKey="value"
-                              stroke={getSensorStatus(sensorData.salinity, 'salinity') === 'critical' ? '#ef4444' : '#22d3ee'}
-                              strokeWidth={2}
-                              dot={false}
-                              animationDuration={300}
-                            />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-
-                    {/* Ammonia */}
-                    <div className={`${getStatusColor(getSensorStatus(sensorData.ammonia, 'ammonia'))} backdrop-blur-xl border rounded-xl p-6 transition-colors duration-500`}>
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${getSensorStatus(sensorData.ammonia, 'ammonia') === 'critical' ? 'bg-red-500/20' : 'bg-rose-500/20'}`}>
-                            <AlertTriangle className={`w-5 h-5 ${getSensorStatus(sensorData.ammonia, 'ammonia') === 'critical' ? 'text-red-400' : 'text-rose-400'}`} />
-                          </div>
-                          <div>
-                            <p className="text-xs text-slate-400">Ammonia</p>
-                            <p className="text-2xl font-bold">{sensorData.ammonia.toFixed(3)}<span className="text-sm text-slate-400 ml-1">ppm</span></p>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="h-16">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={ammoniaData}>
-                            <Line
-                              type="monotone"
-                              dataKey="value"
-                              stroke={getSensorStatus(sensorData.ammonia, 'ammonia') === 'critical' ? '#ef4444' : '#fb7185'}
-                              strokeWidth={2}
-                              dot={false}
-                              animationDuration={300}
-                            />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
+                    <SensorCard
+                      title="pH Level"
+                      value={sensorData.ph}
+                      type="ph"
+                      data={phData}
+                      icon={Droplets}
+                      colorClass={{ bg: 'bg-blue-500/20', text: 'text-blue-400', stroke: '#60a5fa' }}
+                    />
+                    <SensorCard
+                      title="Temperature"
+                      value={sensorData.temperature}
+                      unit="°C"
+                      type="temp"
+                      data={tempData}
+                      icon={Thermometer}
+                      colorClass={{ bg: 'bg-orange-500/20', text: 'text-orange-400', stroke: '#fb923c' }}
+                    />
+                    <SensorCard
+                      title="Dissolved O₂"
+                      value={sensorData.dissolvedOxygen}
+                      unit="mg/L"
+                      type="do"
+                      data={doData}
+                      icon={Wind}
+                      colorClass={{ bg: 'bg-teal-500/20', text: 'text-teal-400', stroke: '#2dd4bf' }}
+                    />
+                    <SensorCard
+                      title="Turbidity"
+                      value={sensorData.turbidity}
+                      unit="NTU"
+                      type="turb"
+                      data={turbidityData}
+                      icon={Eye}
+                      colorClass={{ bg: 'bg-purple-500/20', text: 'text-purple-400', stroke: '#c084fc' }}
+                    />
+                    <SensorCard
+                      title="Salinity"
+                      value={sensorData.salinity}
+                      unit="ppt"
+                      type="salinity"
+                      data={salinityData}
+                      icon={Droplets}
+                      colorClass={{ bg: 'bg-cyan-500/20', text: 'text-cyan-400', stroke: '#22d3ee' }}
+                    />
+                    <SensorCard
+                      title="Ammonia"
+                      value={sensorData.ammonia}
+                      unit="ppm"
+                      type="ammonia"
+                      data={ammoniaData}
+                      icon={AlertTriangle}
+                      colorClass={{ bg: 'bg-rose-500/20', text: 'text-rose-400', stroke: '#fb7185' }}
+                    />
                   </div>
                 </div>
 
-                {/* Bottom Row - What-If Simulator and CV Diagnoser */}
+                {/* Bottom Row - CV Diagnoser */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* What-If Simulator */}
-                  <div className="bg-slate-900/40 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-                    <div className="flex items-center gap-2 mb-6">
-                      <Brain className="w-5 h-5 text-purple-400" />
-                      <h3 className="text-xl font-bold">What-If Simulator</h3>
-                    </div>
-
-                    <div className="space-y-6">
-                      {/* Temperature Slider */}
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <label className="text-sm text-slate-300">Temperature (°C)</label>
-                          <span className="text-sm font-bold text-orange-400">{simTemp}°C</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="20"
-                          max="35"
-                          step="0.5"
-                          value={simTemp}
-                          onChange={(e) => setSimTemp(parseFloat(e.target.value))}
-                          className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-orange-500"
-                        />
-                        <div className="flex justify-between text-xs text-slate-500 mt-1">
-                          <span>20°C</span>
-                          <span>35°C</span>
-                        </div>
-                      </div>
-
-                      {/* pH Slider */}
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <label className="text-sm text-slate-300">pH Level</label>
-                          <span className="text-sm font-bold text-blue-400">{simPH.toFixed(1)}</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="5"
-                          max="10"
-                          step="0.1"
-                          value={simPH}
-                          onChange={(e) => setSimPH(parseFloat(e.target.value))}
-                          className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                        />
-                        <div className="flex justify-between text-xs text-slate-500 mt-1">
-                          <span>5.0</span>
-                          <span>10.0</span>
-                        </div>
-                      </div>
-
-                      {/* Ammonia Slider */}
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <label className="text-sm text-slate-300">Ammonia (ppm)</label>
-                          <span className="text-sm font-bold text-rose-400">{simAmmonia.toFixed(3)}</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="0.2"
-                          step="0.001"
-                          value={simAmmonia}
-                          onChange={(e) => setSimAmmonia(parseFloat(e.target.value))}
-                          className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-rose-500"
-                        />
-                        <div className="flex justify-between text-xs text-slate-500 mt-1">
-                          <span>0.000</span>
-                          <span>0.200</span>
-                        </div>
-                      </div>
-
-                      {/* Predicted Results */}
-                      <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-white/10 rounded-xl p-4 mt-6">
-                        <p className="text-xs text-slate-400 mb-3">Predicted Outcomes</p>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <p className="text-xs text-slate-400 mb-1">Health Score</p>
-                            <p className={`text-3xl font-bold ${getHealthScoreColor(simHealthScore)}`}>
-                              {simHealthScore}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-slate-400 mb-1">Disease Risk</p>
-                            <p className={`text-3xl font-bold ${simDiseaseRisk > 70 ? 'text-red-400' : simDiseaseRisk > 40 ? 'text-yellow-400' : 'text-green-400'}`}>
-                              {simDiseaseRisk}%
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
                   {/* CV Diagnoser */}
                   <div className="bg-slate-900/40 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
                     <div className="flex items-center gap-2 mb-6">
@@ -786,6 +657,8 @@ export default function App() {
               </>
             ) : activeNav === 'Predictive Analytics' ? (
               <PredictiveAnalysis />
+            ) : activeNav === 'What-if Simulation' ? (
+              <WhatIfSimulation />
             ) : (
               <div className="flex items-center justify-center h-64 text-slate-400">
                 <p>Section under construction</p>

@@ -1,9 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import joblib
 from pydantic import BaseModel
-import numpy as np
 import os
+from logic import ExpertRules
+
+import joblib
+import pandas as pd
+
+# ... (other imports)
 
 app = FastAPI(title="AquaNova Water Quality Predictor", version="1.0")
 
@@ -15,20 +19,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Load production model components
-try:
-    if os.path.exists('production_model.pkl'):
-        model = joblib.load('production_model.pkl')
-        scaler = joblib.load('production_scaler.pkl')
-        le = joblib.load('production_label_encoder.pkl')
-        print("✅ Production model loaded successfully")
-    else:
-        print("❌ Model files not found. Please train the model first.")
-        model = None
-except Exception as e:
-    print(f"❌ Error loading model: {e}")
-    model = None
 
 class WaterQualityInput(BaseModel):
     temperature: float
@@ -46,75 +36,66 @@ class WaterQualityInput(BaseModel):
             }
         }
 
+# Load models if available
+model = None
+le = None
+MODEL_PATH = "disease_model.pkl"
+ENCODER_PATH = "label_encoder.pkl"
+
+if os.path.exists(MODEL_PATH) and os.path.exists(ENCODER_PATH):
+    try:
+        model = joblib.load(MODEL_PATH)
+        le = joblib.load(ENCODER_PATH)
+        print("ML Model loaded successfully.")
+    except Exception as e:
+        print(f"Error loading ML model: {e}")
+
 @app.post("/predict")
 async def predict_disease_risk(data: WaterQualityInput):
     """
-    Predict disease occurrence based on water quality parameters
+    Predict disease occurrence based on water quality parameters using Hybrid approach (Rules + ML).
     """
-    if model is None:
-        return {"error": "Model not loaded. Please train the model first."}
-        
     try:
-        # Prepare input features
-        features_array = np.array([[
-            data.temperature, 
-            data.ph, 
-            data.dissolved_oxygen, 
-            data.turbidity
-        ]])
+        # 1. Expert Rules Analysis (Deterministic Baseline)
+        analysis = ExpertRules.evaluate(data)
         
-        # Apply preprocessing
-        features_scaled = scaler.transform(features_array)
+        # 2. ML Disease Prediction (Specific Diagnosis)
+        disease_pred = "Analysis Pending"
+        confidence = 100.0 # Default for rules
         
-        # Expert Rule Checking (Hybrid Approach)
-        rules_triggered = []
-        
-        # pH Rules
-        if data.ph <= 6:
-            rules_triggered.append("pH is too low (Acidic)")
-        elif data.ph >= 8:
-            rules_triggered.append("pH is too high (Alkaline)")
+        if model and le:
+            # Prepare input for ML
+            # Feature order must match training
+            input_df = pd.DataFrame([{
+               'ph': data.ph,
+               'dissolved_oxygen': data.dissolved_oxygen,
+               'temperature': data.temperature,
+               'turbidity': data.turbidity
+            }])
             
-        # Dissolved Oxygen Rules
-        if data.dissolved_oxygen < 5.0:
-            rules_triggered.append("Dissolved Oxygen is critically low")
+            # Predict
+            pred_idx = model.predict(input_df)[0]
+            disease_pred = le.inverse_transform([pred_idx])[0]
             
-        # Turbidity Rules
-        if data.turbidity > 25:
-            rules_triggered.append("Water is too turbid (Cloudy)")
-            
-        # Temperature Rules
-        if data.temperature < 20: 
-            rules_triggered.append("Temperature is too low")
-        elif data.temperature > 34:
-            rules_triggered.append("Temperature is too high")
+            # Get probability/confidence
+            probs = model.predict_proba(input_df)
+            confidence = float(max(probs[0]) * 100)
 
-        # If critical rules triggered, override
-        if rules_triggered:
-            disease_level = 2
-            risk_status = "HIGH"
-            confidence = 100.0
-            recommendation = f"Critical Alert: {'; '.join(rules_triggered)}. Immediate action required."
-        else:
-            # ML Model Prediction for non-obvious cases
-            prediction = model.predict(features_scaled)[0]
-            probabilities = model.predict_proba(features_scaled)[0]
-            
-            disease_level = int(le.inverse_transform([prediction])[0])
-            confidence = round(max(probabilities) * 100, 2)
-            
-            risk_status = "HIGH" if disease_level == 2 else "LOW"
-            
-            if disease_level == 2:
-                recommendation = "High disease risk detected! Check oxygen levels and pH balance."
-            else:
-                recommendation = "Water quality is within acceptable range. Monitor regularly."
-            
+        # 3. Combine Results
+        # If rules say "Optimal", override ML noise unless confidence is very high
+        if analysis["risk_status"] == "Optimal" and disease_pred != "Healthy" and confidence < 80:
+             disease_pred = "Healthy"
+        
         return {
-            "disease_level": int(disease_level),
-            "risk_status": risk_status,
-            "confidence": confidence,
-            "recommendation": recommendation,
+            "disease_name": disease_pred, 
+            "disease_level": 2 if analysis["risk_status"] == "Risk" else (1 if analysis["risk_status"] == "Warning" else 0),
+            "risk_status": analysis["risk_status"].upper(),
+            "confidence": round(confidence, 1),
+            "recommendation": analysis["recommendation"],
+            "suggestions": analysis["suggestions"],
+            "suggestions_map": analysis["suggestions_map"],
+            "triggers": analysis["triggers"],
+            "health_score": analysis["health_score"],
             "input_values": {
                 "temperature": data.temperature,
                 "ph": data.ph,
@@ -128,4 +109,5 @@ async def predict_disease_risk(data: WaterQualityInput):
 
 @app.get("/")
 async def root():
-    return {"message": "AquaNova Water Quality Predictor API", "status": "active"}
+    mode = "Hybrid (Rules + ML)" if model else "Action-Based Expert Rules"
+    return {"message": "AquaNova Water Quality Predictor API", "status": "active", "mode": mode}
