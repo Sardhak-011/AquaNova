@@ -341,12 +341,18 @@ export default function App() {
     setChatMessages(prev => [...prev, { role: 'assistant', text: 'Thinking...', isLoading: true }]);
 
     try {
+      // Map frontend camelCase to backend snake_case expectations
+      const contextPayload = {
+        ...sensorData,
+        dissolved_oxygen: sensorData.dissolvedOxygen
+      };
+
       const response = await fetch('http://localhost:8000/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: userMsg,
-          context: sensorData
+          context: contextPayload
         })
       });
 
