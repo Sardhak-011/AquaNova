@@ -30,6 +30,7 @@ class WaterQualityInput(BaseModel):
     ph: float
     dissolved_oxygen: float
     turbidity: float
+    ammonia: float = 0.0
     
     class Config:
         json_schema_extra = {
@@ -37,7 +38,8 @@ class WaterQualityInput(BaseModel):
                 "temperature": 25.5,
                 "ph": 7.2,
                 "dissolved_oxygen": 6.8,
-                "turbidity": 1.2
+                "turbidity": 1.2,
+                "ammonia": 0.01
             }
         }
 
@@ -127,6 +129,7 @@ async def predict_disease_risk(data: WaterQualityInput):
             "suggestions_map": analysis["suggestions_map"],
             "triggers": analysis["triggers"],
             "health_score": analysis["health_score"],
+            "detailed_solutions": ExpertRules.get_detailed_solutions(data),
             "input_values": {
                 "temperature": data.temperature,
                 "ph": data.ph,

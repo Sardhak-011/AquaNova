@@ -25,7 +25,8 @@ export function WhatIfSimulation() {
         temperature: 28.5,
         ph: 7.2,
         dissolved_oxygen: 6.8,
-        turbidity: 12.3
+        turbidity: 12.3,
+        ammonia: 0.01
     });
 
     // Debounce the API call
@@ -222,6 +223,38 @@ export function WhatIfSimulation() {
                                 <span>0</span>
                                 <span>Target: &lt; 15</span>
                                 <span>50</span>
+                            </div>
+                        </div>
+
+                        {/* Ammonia */}
+                        <div className="space-y-3 relative group/ammonia">
+                            <div className="flex justify-between items-center">
+                                <div className="flex items-center gap-2">
+                                    <Label className="text-slate-300">Ammonia (ppm)</Label>
+                                    {result?.suggestions_map?.ammonia && (
+                                        <div className="group/info relative">
+                                            <Info className="w-4 h-4 text-orange-400 cursor-help animate-pulse" />
+                                            <div className="absolute left-0 bottom-6 w-64 p-3 text-xs text-white bg-slate-900/95 border border-white/10 rounded-lg shadow-xl opacity-0 invisible group-hover/info:opacity-100 group-hover/info:visible transition-all z-50 backdrop-blur-md">
+                                                {result.suggestions_map.ammonia}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                                <span className="font-mono text-rose-300">{params.ammonia?.toFixed(2) || "0.00"}</span>
+                            </div>
+                            <input
+                                type="range"
+                                min="0"
+                                max="1.0"
+                                step="0.01"
+                                value={params.ammonia || 0}
+                                onChange={(e) => handleSliderChange('ammonia', parseFloat(e.target.value))}
+                                className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-rose-500"
+                            />
+                            <div className="flex justify-between text-xs text-slate-500">
+                                <span>0</span>
+                                <span>Target: &lt; 0.02</span>
+                                <span>1.0</span>
                             </div>
                         </div>
                     </CardContent>

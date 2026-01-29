@@ -42,7 +42,24 @@ const calculateWaterHealthScore = (temp: number, ph: number, ammonia: number, do
   penalty += Math.max(0, (6.0 - do_val) * 4);// Lowered weight
   penalty += turbidity * 0.1;                // Lowered weight
 
-  return Math.max(0, Math.min(100, 100 - penalty));
+  // Critical penalties for disease vectors (The user request: "if disease showing > %, score shouldn't be optimal")
+  // Optimal threshold is 71.
+  let isDiseaseRisk = false;
+
+  // Ich Risk Conditions (Temp < 24 or > 32)
+  if (temp < 24 || temp > 32) isDiseaseRisk = true;
+
+  // Fin Rot Risk Conditions (pH < 6.5 or Ammonia > 0.02)
+  if (ph < 6.5 || ammonia > 0.02) isDiseaseRisk = true;
+
+  let finalScore = Math.max(0, Math.min(100, 100 - penalty));
+
+  // CAP score if disease risk exists
+  if (isDiseaseRisk && finalScore > 70) {
+    finalScore = 70; // Cap at Moderate/Warning
+  }
+
+  return finalScore;
 };
 
 // Calculate disease risk
@@ -166,7 +183,7 @@ const SensorCard = ({ title, value, unit, type, data, icon: Icon, colorClass }: 
 
 export default function App() {
   const [activeNav, setActiveNav] = useState('Live Monitor');
-  const [selectedSpecies, setSelectedSpecies] = useState('Tilapia');
+
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState([
     { role: 'assistant', text: 'Hello! I\'m AquaGPT. How can I assist you with your aquaculture monitoring today?' }
@@ -249,31 +266,69 @@ export default function App() {
     }
   };
 
+  // Hiccups Dataset: Specific abnormal scenarios
+  const getHiccupScenario = () => {
+    const scenarios = [
+      { // Scenario 1: Critical Hypoxia (Low Oxygen)
+        ph: 7.2,
+        temperature: 28.5,
+        dissolvedOxygen: 3.5, // Critical
+        turbidity: 12.0,
+        salinity: 15.0,
+        ammonia: 0.01
+      },
+      { // Scenario 2: Ammonia Spike (Toxic)
+        ph: 8.2, // High pH increases ammonia toxicity
+        temperature: 29.0,
+        dissolvedOxygen: 6.0,
+        turbidity: 10.0,
+        salinity: 15.0,
+        ammonia: 0.08 // Critical
+      },
+      { // Scenario 3: Thermal Stress (High Temp)
+        ph: 7.4,
+        temperature: 36.5, // Critical
+        dissolvedOxygen: 4.5, // Low due to heat
+        turbidity: 15.0,
+        salinity: 16.0,
+        ammonia: 0.02
+      },
+      { // Scenario 4: High Turbidity (Runoff)
+        ph: 7.0,
+        temperature: 27.0,
+        dissolvedOxygen: 5.5,
+        turbidity: 45.0, // Critical
+        salinity: 14.0,
+        ammonia: 0.01
+      }
+    ];
+    return scenarios[Math.floor(Math.random() * scenarios.length)];
+  };
+
+  const handleSimulateAbnormal = () => {
+    setIsSimulating(true);
+    const scenario = getHiccupScenario();
+    setSensorData(scenario); // Set static values immediately
+
+    // Freeze history updates with this bad data so it sticks
+    setHistory(prev => {
+      const newHistory = [...prev, { ...scenario, dissolved_oxygen: scenario.dissolvedOxygen, timestamp: new Date().toISOString() }];
+      return newHistory.slice(-20);
+    });
+  };
+
   // Simulate live data updates
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (!isSimulating) {
+    // Only run interval if NOT in simulation mode
+    // In simulation mode, values are STATIC (frozen) until reset
+    if (!isSimulating) {
+      const interval = setInterval(() => {
         fetchSensorData();
-      } else {
-        // In simulation mode, just add small noise but don't clamp to healthy ranges
-        const newData = {
-          ph: sensorData.ph + (Math.random() - 0.5) * 0.05,
-          temperature: sensorData.temperature + (Math.random() - 0.5) * 0.1,
-          dissolvedOxygen: sensorData.dissolvedOxygen + (Math.random() - 0.5) * 0.1,
-          turbidity: sensorData.turbidity + (Math.random() - 0.5) * 0.2,
-          salinity: sensorData.salinity + (Math.random() - 0.5) * 0.1,
-          ammonia: Math.max(0, sensorData.ammonia + (Math.random() - 0.5) * 0.001)
-        };
-        setSensorData(newData);
-        setHistory(prev => {
-          const newHistory = [...prev, { ...newData, dissolved_oxygen: newData.dissolvedOxygen, timestamp: new Date().toISOString() }];
-          return newHistory.slice(-20);
-        });
-      }
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [isSimulating, sensorData]);
+      }, 5000);
+      return () => clearInterval(interval);
+    }
+    // No interval in simulation mode - static values persist
+  }, [isSimulating]);
 
   const handleSendMessage = () => {
     if (!chatInput.trim()) return;
@@ -400,22 +455,6 @@ export default function App() {
               </div>
 
               <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-slate-400">Species:</span>
-                  <div className="relative">
-                    <select
-                      value={selectedSpecies}
-                      onChange={(e) => setSelectedSpecies(e.target.value)}
-                      className="bg-slate-800/50 border border-white/10 rounded-lg px-4 py-2 pr-10 appearance-none cursor-pointer text-sm backdrop-blur-sm"
-                    >
-                      <option>Tilapia</option>
-                      <option>Catla</option>
-                      <option>Shrimp</option>
-                      <option>Salmon</option>
-                    </select>
-                    <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
-                  </div>
-                </div>
               </div>
             </div>
           </header>
@@ -481,105 +520,126 @@ export default function App() {
                   </div>
 
                   {/* The Oracle - Predictive Alerts */}
-                  <div className="bg-gradient-to-br from-slate-900/60 via-slate-800/40 to-slate-900/60 backdrop-blur-2xl border border-orange-500/30 rounded-2xl p-6 shadow-2xl shadow-orange-500/10 hover:shadow-orange-500/20 transition-all flex flex-col justify-between relative overflow-hidden">
-                    {/* Add Simulated Anomaly Button Overlay */}
-                    <div className="absolute top-4 right-4 flex gap-2">
-                      <button
-                        onClick={() => {
-                          setIsSimulating(true);
-                          setSensorData({
-                            ph: 4.0 + Math.random() * 1.0,           // 4.0 - 5.0 (Acidic)
-                            temperature: 35.0 + Math.random() * 3.0, // 35.0 - 38.0 (Hot)
-                            dissolvedOxygen: 2.0 + Math.random() * 2.0, // 2.0 - 4.0 (Low)
-                            turbidity: 40.0 + Math.random() * 20.0,  // 40 - 60 (High)
-                            salinity: 11.0 + Math.random() * 2.0,
-                            ammonia: 0.1 + Math.random() * 0.1       // 0.1 - 0.2 (Toxic)
-                          });
-                        }}
-                        className="bg-red-500/20 hover:bg-red-500/40 text-red-300 text-xs px-2 py-1 rounded border border-red-500/50 transition-colors"
-                      >
-                        Simulate Abnormal
-                      </button>
-                      <button
-                        onClick={() => {
-                          setIsSimulating(false);
-                          setSensorData({
-                            ph: 7.0 + Math.random() * 0.5,           // 7.0 - 7.5 (Optimal)
-                            temperature: 27.0 + Math.random() * 2.0, // 27.0 - 29.0 (Optimal)
-                            dissolvedOxygen: 6.5 + Math.random() * 1.5, // 6.5 - 8.0 (Optimal)
-                            turbidity: 10.0 + Math.random() * 5.0,   // 10 - 15 (Clear)
-                            salinity: 14.0 + Math.random() * 2.0,
-                            ammonia: 0.005 + Math.random() * 0.015   // Low
-                          });
-                        }}
-                        className="bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 text-xs px-2 py-1 rounded border border-emerald-500/50 transition-colors"
-                      >
-                        Reset
-                      </button>
+                  <div className="bg-gradient-to-br from-slate-900/60 via-slate-800/40 to-slate-900/60 backdrop-blur-2xl border border-orange-500/30 rounded-2xl p-6 shadow-2xl shadow-orange-500/10 hover:shadow-orange-500/20 transition-all flex flex-col relative overflow-hidden h-full">
+
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-6">
+                        <AlertTriangle className={`w-5 h-5 ${waterHealthScore < 70 ? 'text-orange-400 animate-pulse' : 'text-emerald-400'}`} />
+                        <h3 className="text-xl font-bold">The Oracle</h3>
+                      </div>
+
+                      <div className="space-y-4">
+                        {waterHealthScore > 90 ? (
+                          <div className="bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-400/30 rounded-lg p-6 flex flex-col items-center justify-center text-center h-48">
+                            <CheckCircle2 className="w-12 h-12 text-emerald-400 mb-2" />
+                            <p className="text-lg font-bold text-emerald-300">No Risks Detected</p>
+                            <p className="text-sm text-slate-400">Water conditions are optimal. No disease probability.</p>
+                          </div>
+                        ) : (
+                          <>
+                            {/* Ich (White Spot) Risk - Cold Water */}
+                            {sensorData.temperature < 22 && (
+                              <div className="bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border border-blue-400/30 rounded-lg p-4">
+                                <div className="flex items-start gap-3">
+                                  <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse mt-1.5" />
+                                  <div className="flex-1">
+                                    <p className="text-sm font-semibold text-blue-300 mb-1">Ich (White Spot) Risk</p>
+                                    <p className="text-2xl font-bold text-blue-400 mb-2">
+                                      {Math.min(99, Math.round((22 - sensorData.temperature) * 15))}%
+                                    </p>
+                                    <p className="text-xs text-slate-300">Low temperature stress detected</p>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Columnaris Risk - High Temp */}
+                            {sensorData.temperature > 32 && (
+                              <div className="bg-gradient-to-r from-red-500/10 to-orange-500/10 border border-red-400/30 rounded-lg p-4">
+                                <div className="flex items-start gap-3">
+                                  <div className="w-2 h-2 rounded-full bg-red-400 animate-pulse mt-1.5" />
+                                  <div className="flex-1">
+                                    <p className="text-sm font-semibold text-red-300 mb-1">Columnaris Risk</p>
+                                    <p className="text-2xl font-bold text-red-400 mb-2">
+                                      {Math.min(99, Math.round((sensorData.temperature - 32) * 15))}%
+                                    </p>
+                                    <p className="text-xs text-slate-300">High temperature stress detected</p>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Fin Rot Risk (pH/Ammonia) */}
+                            {(sensorData.ph < 6.8 || sensorData.ammonia > 0.02) && (
+                              <div className="bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-400/30 rounded-lg p-4">
+                                <div className="flex items-start gap-3">
+                                  <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse mt-1.5" />
+                                  <div className="flex-1">
+                                    <p className="text-sm font-semibold text-yellow-300 mb-1">Fin Rot Risk</p>
+                                    <p className="text-2xl font-bold text-yellow-400 mb-2">
+                                      {Math.min(95, Math.round((0.02 + sensorData.ammonia) * 800 + Math.abs(7.5 - sensorData.ph) * 10))}%
+                                    </p>
+                                    <p className="text-xs text-slate-300">Poor water quality detected</p>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* General Health Warning if low score but specific risks low */}
+                            {waterHealthScore < 70 && sensorData.ph >= 6.8 && sensorData.ammonia <= 0.02 && sensorData.temperature >= 22 && sensorData.temperature <= 32 && (
+                              <div className="bg-gradient-to-r from-orange-500/10 to-red-500/10 border border-orange-400/30 rounded-lg p-4">
+                                <div className="flex items-start gap-3">
+                                  <AlertTriangle className="w-4 h-4 text-orange-400 mt-0.5" />
+                                  <div className="flex-1">
+                                    <p className="text-sm font-semibold text-orange-300">General Stress</p>
+                                    <p className="text-2xl font-bold text-orange-400">{100 - waterHealthScore}%</p>
+                                    <p className="text-xs text-slate-400 mt-1">Multiple parameters deviating from optimal</p>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-2 mb-6">
-                      <AlertTriangle className={`w-5 h-5 ${waterHealthScore < 70 ? 'text-orange-400 animate-pulse' : 'text-emerald-400'}`} />
-                      <h3 className="text-xl font-bold">The Oracle</h3>
-                    </div>
-
-                    <div className="space-y-4">
-                      {waterHealthScore > 90 ? (
-                        <div className="bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-400/30 rounded-lg p-6 flex flex-col items-center justify-center text-center h-48">
-                          <CheckCircle2 className="w-12 h-12 text-emerald-400 mb-2" />
-                          <p className="text-lg font-bold text-emerald-300">No Risks Detected</p>
-                          <p className="text-sm text-slate-400">Water conditions are optimal. No disease probability.</p>
-                        </div>
+                    {/* Action Buttons Footer */}
+                    <div className="mt-6 flex justify-end gap-2 z-20 pt-4 border-t border-white/5">
+                      {!isSimulating ? (
+                        <button
+                          onClick={handleSimulateAbnormal}
+                          className="bg-red-500/20 hover:bg-red-500/40 text-red-300 text-xs px-3 py-1.5 rounded border border-red-500/50 transition-colors font-bold flex items-center gap-1"
+                        >
+                          <AlertTriangle className="w-3 h-3" />
+                          Simulate Risks
+                        </button>
                       ) : (
-                        <>
-                          {/* Dynamic Ich Risk (Temp driven) */}
-                          {(sensorData.temperature < 24 || sensorData.temperature > 32) && (
-                            <div className="bg-gradient-to-r from-red-500/10 to-orange-500/10 border border-red-400/30 rounded-lg p-4">
-                              <div className="flex items-start gap-3">
-                                <div className="w-2 h-2 rounded-full bg-red-400 animate-pulse mt-1.5" />
-                                <div className="flex-1">
-                                  <p className="text-sm font-semibold text-red-300 mb-1">Ich Disease Risk</p>
-                                  <p className="text-2xl font-bold text-red-400 mb-2">
-                                    {Math.min(99, Math.round(Math.abs(28 - sensorData.temperature) * 12))}%
-                                  </p>
-                                  <p className="text-xs text-slate-300">Temperature stress detected</p>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Dynamic Fin Rot Risk (pH/Ammonia driven) */}
-                          {(sensorData.ph < 6.5 || sensorData.ammonia > 0.02) && (
-                            <div className="bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-400/30 rounded-lg p-4">
-                              <div className="flex items-start gap-3">
-                                <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse mt-1.5" />
-                                <div className="flex-1">
-                                  <p className="text-sm font-semibold text-yellow-300 mb-1">Fin Rot Risk</p>
-                                  <p className="text-2xl font-bold text-yellow-400 mb-2">
-                                    {Math.min(95, Math.round((0.02 + sensorData.ammonia) * 800 + Math.abs(7.5 - sensorData.ph) * 10))}%
-                                  </p>
-                                  <p className="text-xs text-slate-300">Poor water quality detected</p>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* General Health Warning if low score but specific risks low */}
-                          {waterHealthScore < 70 && sensorData.ph >= 6.5 && sensorData.temperature >= 24 && sensorData.temperature <= 32 && (
-                            <div className="bg-gradient-to-r from-orange-500/10 to-red-500/10 border border-orange-400/30 rounded-lg p-4">
-                              <div className="flex items-start gap-3">
-                                <AlertTriangle className="w-4 h-4 text-orange-400 mt-0.5" />
-                                <div className="flex-1">
-                                  <p className="text-sm font-semibold text-orange-300">General Stress</p>
-                                  <p className="text-2xl font-bold text-orange-400">{100 - waterHealthScore}%</p>
-                                  <p className="text-xs text-slate-400 mt-1">Multiple parameters deviating from optimal</p>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </>
+                        <div className="flex gap-2 flex-wrap justify-end">
+                          <button
+                            onClick={() => setActiveNav('Predictive Analytics')}
+                            className="bg-indigo-500 hover:bg-indigo-600 text-white text-xs px-3 py-1.5 rounded shadow-lg shadow-indigo-500/20 transition-all font-bold animate-pulse"
+                          >
+                            Predict Risks →
+                          </button>
+                          <button
+                            onClick={handleSimulateAbnormal} // Generate NEW scenario
+                            className="bg-red-500/20 hover:bg-red-500/40 text-red-300 text-xs px-3 py-1.5 rounded border border-red-500/50 transition-colors"
+                          >
+                            New Scenario
+                          </button>
+                          <button
+                            onClick={() => {
+                              setIsSimulating(false);
+                              fetchSensorData(); // Resume immediately
+                            }}
+                            className="bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 text-xs px-3 py-1.5 rounded border border-emerald-500/50 transition-colors"
+                          >
+                            Reset System
+                          </button>
+                        </div>
                       )}
                     </div>
+
                   </div>
                 </div>
 
@@ -682,7 +742,7 @@ export default function App() {
                 </div>
               </>
             ) : activeNav === 'Predictive Analytics' ? (
-              <PredictiveAnalysis history={history} />
+              <PredictiveAnalysis history={history} currentData={{ ...sensorData, dissolved_oxygen: sensorData.dissolvedOxygen }} />
             ) : activeNav === 'What-if Simulation' ? (
               <WhatIfSimulation />
             ) : (
