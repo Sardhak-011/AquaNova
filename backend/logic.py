@@ -128,3 +128,82 @@ class ExpertRules:
             suggestions_list = ["Conditions are optimal. Continue regular monitoring."]
             
         return suggestions_list, suggestions_map
+
+import numpy as np
+from datetime import datetime, timedelta
+
+class Forecaster:
+    @staticmethod
+    def predict_trends(history: list, forecast_steps: int = 20):
+        """
+        Predict future trends using Linear Regression.
+        
+        Args:
+            history: List of dicts containing historical sensor data.
+            forecast_steps: Number of future steps to predict (5s intervals).
+            
+        Returns:
+            start_time: ISO timestamp of the last data point.
+            projections: Dict of list of predicted values for each parameter.
+            insights: List of textual insights about trends.
+        """
+        if len(history) < 5:
+            return None, {}, [] # Not enough data
+            
+        projections = {
+            "ph": [],
+            "temperature": [],
+            "dissolved_oxygen": [],
+            "turbidity": []
+        }
+        
+        insights = []
+        
+        # Expert Thresholds for Insights
+        THRESHOLDS = {
+            "ph": {"min": 6.5, "max": 8.5, "unit": ""},
+            "dissolved_oxygen": {"min": 5.0, "max": 100.0, "unit": "mg/L"}, # Max is placeholder
+            "turbidity": {"min": -1.0, "max": 25.0, "unit": "NTU"}, # Min is placeholder
+            "temperature": {"min": 20.0, "max": 34.0, "unit": "°C"}
+        }
+        
+        # Prepare X axis (time steps)
+        x = np.arange(len(history))
+        future_x = np.arange(len(history), len(history) + forecast_steps)
+        
+        for param in projections.keys():
+            y = np.array([float(d[param]) for d in history])
+            
+            # Linear Regression (Degree 1)
+            slope, intercept = np.polyfit(x, y, 1)
+            
+            # Predict
+            future_y = slope * future_x + intercept
+            projections[param] = future_y.tolist()
+            
+            # Generate Insights
+            # Rate of change per minute (since 1 step = 5s, 12 steps = 1 min)
+            rate_per_min = slope * 12
+            
+            current_val = y[-1]
+            t_min = THRESHOLDS[param]["min"]
+            t_max = THRESHOLDS[param]["max"]
+            unit = THRESHOLDS[param]["unit"]
+            
+            # Check for declining trend towards minimum
+            if slope < 0 and current_val > t_min:
+                time_to_risk = (t_min - intercept) / slope
+                steps_remaining = time_to_risk - len(history)
+                if 0 < steps_remaining < 60: # Within next 5 mins (at 5s/step)
+                    minutes = steps_remaining * 5 / 60
+                    insights.append(f"{param.replace('_', ' ').title()} is dropping at {abs(rate_per_min):.2f} {unit}/min. Risk of falling below {t_min} {unit} in {minutes:.1f} minutes.")
+            
+            # Check for rising trend towards maximum
+            elif slope > 0 and current_val < t_max:
+                time_to_risk = (t_max - intercept) / slope
+                steps_remaining = time_to_risk - len(history)
+                if 0 < steps_remaining < 60:
+                     minutes = steps_remaining * 5 / 60
+                     insights.append(f"{param.replace('_', ' ').title()} is rising at {rate_per_min:.2f} {unit}/min. Risk of exceeding {t_max} {unit} in {minutes:.1f} minutes.")
+
+        return history[-1].get("timestamp", datetime.now().isoformat()), projections, insights

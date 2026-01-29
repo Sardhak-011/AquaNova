@@ -3,13 +3,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
 from logic import ExpertRules
-
+from data_loader import DatasetStreamer
 import joblib
 import pandas as pd
 
 # ... (other imports)
 
 app = FastAPI(title="AquaNova Water Quality Predictor", version="1.0")
+
+# Initialize Data Streamer
+# Use absolute path for reliability in this environment
+CSV_PATH = "/Users/abhi/Documents/Projects/AquaNova/dataset/Water Quality Monitoring Dataset_ Ireland.csv"
+streamer = DatasetStreamer(CSV_PATH)
 
 # Configure CORS
 app.add_middleware(
@@ -49,6 +54,32 @@ if os.path.exists(MODEL_PATH) and os.path.exists(ENCODER_PATH):
         print("ML Model loaded successfully.")
     except Exception as e:
         print(f"Error loading ML model: {e}")
+
+
+@app.get("/api/live-data")
+async def get_live_data():
+    """
+    Get the next real data point from the Ireland dataset.
+    """
+    data = streamer.get_next()
+    
+    # Run analysis on this real data
+    input_data = WaterQualityInput(
+        temperature=data['temperature'],
+        ph=data['ph'],
+        dissolved_oxygen=data['dissolved_oxygen'],
+        turbidity=data['turbidity'],
+        ammonia=data['ammonia']
+    )
+    
+    # Get predictions/logic
+    analysis = ExpertRules.evaluate(input_data)
+    
+    # Merge raw data with analysis
+    return {
+        "sensor_data": data,
+        "analysis": analysis
+    }
 
 @app.post("/predict")
 async def predict_disease_risk(data: WaterQualityInput):
@@ -106,6 +137,19 @@ async def predict_disease_risk(data: WaterQualityInput):
         
     except Exception as e:
         return {"error": f"Prediction failed: {str(e)}"}
+
+class ForecastRequest(BaseModel):
+    history: list # List of sensor data dicts
+
+@app.post("/api/forecast")
+def get_forecast(request: ForecastRequest):
+    from logic import Forecaster
+    start_time, projections, insights = Forecaster.predict_trends(request.history)
+    return {
+        "start_time": start_time,
+        "projections": projections,
+        "insights": insights
+    }
 
 @app.get("/")
 async def root():

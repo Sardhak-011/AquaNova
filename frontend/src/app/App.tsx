@@ -221,33 +221,59 @@ export default function App() {
   const simHealthScore = Math.round(calculateWaterHealthScore(simTemp, simPH, simAmmonia, 8.0, 5.0));
   const simDiseaseRisk = Math.round(calculateDiseaseRisk(simTemp, simPH, simAmmonia, 8.0, 5.0));
 
+  const [history, setHistory] = useState<any[]>([]);
+
+  // Fetch live data from backend
+  const fetchSensorData = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/live-data');
+      const data = await response.json();
+
+      if (data && data.sensor_data) {
+        setSensorData({
+          ph: data.sensor_data.ph,
+          temperature: data.sensor_data.temperature,
+          dissolvedOxygen: data.sensor_data.dissolved_oxygen,
+          turbidity: data.sensor_data.turbidity,
+          salinity: data.sensor_data.salinity,
+          ammonia: data.sensor_data.ammonia
+        });
+
+        setHistory(prev => {
+          const newHistory = [...prev, { ...data.sensor_data, timestamp: new Date().toISOString() }];
+          return newHistory.slice(-20); // Keep last 20 points (~1.5 min at 5s interval)
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching live data:', error);
+    }
+  };
+
   // Simulate live data updates
   useEffect(() => {
     const interval = setInterval(() => {
       if (!isSimulating) {
-        setSensorData(prev => ({
-          ph: Math.max(6, Math.min(9, prev.ph + (Math.random() - 0.5) * 0.1)),
-          temperature: Math.max(24, Math.min(32, prev.temperature + (Math.random() - 0.5) * 0.3)),
-          dissolvedOxygen: Math.max(5, Math.min(8, prev.dissolvedOxygen + (Math.random() - 0.5) * 0.2)),
-          turbidity: Math.max(8, Math.min(20, prev.turbidity + (Math.random() - 0.5) * 0.5)),
-          salinity: Math.max(12, Math.min(18, prev.salinity + (Math.random() - 0.5) * 0.3)),
-          ammonia: Math.max(0, Math.min(0.05, prev.ammonia + (Math.random() - 0.5) * 0.002))
-        }));
+        fetchSensorData();
       } else {
         // In simulation mode, just add small noise but don't clamp to healthy ranges
-        setSensorData(prev => ({
-          ph: prev.ph + (Math.random() - 0.5) * 0.05,
-          temperature: prev.temperature + (Math.random() - 0.5) * 0.1,
-          dissolvedOxygen: prev.dissolvedOxygen + (Math.random() - 0.5) * 0.1,
-          turbidity: prev.turbidity + (Math.random() - 0.5) * 0.2,
-          salinity: prev.salinity + (Math.random() - 0.5) * 0.1,
-          ammonia: Math.max(0, prev.ammonia + (Math.random() - 0.5) * 0.001)
-        }));
+        const newData = {
+          ph: sensorData.ph + (Math.random() - 0.5) * 0.05,
+          temperature: sensorData.temperature + (Math.random() - 0.5) * 0.1,
+          dissolvedOxygen: sensorData.dissolvedOxygen + (Math.random() - 0.5) * 0.1,
+          turbidity: sensorData.turbidity + (Math.random() - 0.5) * 0.2,
+          salinity: sensorData.salinity + (Math.random() - 0.5) * 0.1,
+          ammonia: Math.max(0, sensorData.ammonia + (Math.random() - 0.5) * 0.001)
+        };
+        setSensorData(newData);
+        setHistory(prev => {
+          const newHistory = [...prev, { ...newData, dissolved_oxygen: newData.dissolvedOxygen, timestamp: new Date().toISOString() }];
+          return newHistory.slice(-20);
+        });
       }
-    }, 2000);
+    }, 5000);
 
     return () => clearInterval(interval);
-  }, [isSimulating]);
+  }, [isSimulating, sensorData]);
 
   const handleSendMessage = () => {
     if (!chatInput.trim()) return;
@@ -656,7 +682,7 @@ export default function App() {
                 </div>
               </>
             ) : activeNav === 'Predictive Analytics' ? (
-              <PredictiveAnalysis />
+              <PredictiveAnalysis history={history} />
             ) : activeNav === 'What-if Simulation' ? (
               <WhatIfSimulation />
             ) : (
