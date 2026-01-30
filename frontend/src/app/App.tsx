@@ -3,7 +3,6 @@ import {
   Waves,
   Activity,
   Brain,
-  Settings,
   Droplets,
   Thermometer,
   Wind,
@@ -181,11 +180,68 @@ const SensorCard = ({ title, value, unit, type, data, icon: Icon, colorClass }: 
   );
 };
 
+interface DiagnosisResult {
+  disease_name: string;
+  confidence: "Low" | "Medium" | "High" | string | number;
+  reasoning: string;
+  status: "Healthy" | "Infected" | "unknown" | "error" | "rate_limit";
+}
+
 export default function App() {
   const [activeNav, setActiveNav] = useState('Live Monitor');
 
+  // CV Diagnoser State
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isDiagnosing, setIsDiagnosing] = useState(false);
+  const [diagnosis, setDiagnosis] = useState<DiagnosisResult | null>(null);
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setSelectedImage(file);
+      setImagePreview(URL.createObjectURL(file));
+      setDiagnosis(null); // Reset previous diagnosis
+    }
+  };
+
+  const handleDiagnose = async () => {
+    if (!selectedImage) return;
+
+    setIsDiagnosing(true);
+    setDiagnosis(null);
+
+    const formData = new FormData();
+    formData.append('file', selectedImage);
+
+    try {
+      const response = await fetch('http://localhost:8000/api/diagnose', {
+        method: 'POST',
+        body: formData,
+      });
+      const result = await response.json();
+      setDiagnosis(result);
+    } catch (error) {
+      console.error('Diagnosis failed:', error);
+      setDiagnosis({
+        disease_name: 'Error',
+        confidence: 0,
+        reasoning: 'Failed to connect to the server.',
+        status: 'error'
+      });
+    } finally {
+      setIsDiagnosing(false);
+    }
+  };
+
+  interface ChatMessage {
+    role: string;
+    text: string;
+    isLoading?: boolean;
+  }
+
   const [chatOpen, setChatOpen] = useState(false);
-  const [chatMessages, setChatMessages] = useState([
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     { role: 'assistant', text: 'Hello! I\'m AquaGPT. How can I assist you with your aquaculture monitoring today?' }
   ]);
   const [chatInput, setChatInput] = useState('');
@@ -429,9 +485,7 @@ export default function App() {
             {[
               { name: 'Live Monitor', icon: Activity },
               { name: 'Predictive Analytics', icon: Brain },
-              { name: 'What-if Simulation', icon: Brain },
-              { name: 'Fish Health AI', icon: Eye },
-              { name: 'Settings', icon: Settings }
+              { name: 'What-if Simulation', icon: Brain }
             ].map((item) => (
               <button
                 key={item.name}
@@ -727,24 +781,98 @@ export default function App() {
                 {/* Bottom Row - CV Diagnoser */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* CV Diagnoser */}
+                  {/* CV Diagnoser */}
                   <div className="bg-slate-900/40 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
                     <div className="flex items-center gap-2 mb-6">
                       <Camera className="w-5 h-5 text-teal-400" />
                       <h3 className="text-xl font-bold">CV Diagnoser</h3>
                     </div>
 
-                    <div className="border-2 border-dashed border-white/20 rounded-xl p-12 text-center hover:border-teal-400/50 transition-colors cursor-pointer group">
-                      <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-teal-500/20 to-blue-500/20 flex items-center justify-center group-hover:scale-110 transition-transform">
-                        <Camera className="w-10 h-10 text-teal-400" />
+                    {!selectedImage ? (
+                      <div className="border-2 border-dashed border-white/20 rounded-xl p-12 text-center hover:border-teal-400/50 transition-colors cursor-pointer group relative">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageSelect}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                        />
+                        <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-teal-500/20 to-blue-500/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+                          <Camera className="w-10 h-10 text-teal-400" />
+                        </div>
+                        <p className="text-sm text-slate-300 mb-2">Drop fish image here or click to upload</p>
+                        <p className="text-xs text-slate-500">AI-powered disease detection</p>
+                        <div className="mt-4 px-6 py-2 bg-gradient-to-r from-teal-500 to-blue-500 rounded-lg text-sm font-semibold hover:from-teal-400 hover:to-blue-400 transition-all inline-block">
+                          Select Image
+                        </div>
                       </div>
-                      <p className="text-sm text-slate-300 mb-2">Drop fish image here or click to upload</p>
-                      <p className="text-xs text-slate-500">AI-powered disease detection</p>
-                      <button className="mt-4 px-6 py-2 bg-gradient-to-r from-teal-500 to-blue-500 rounded-lg text-sm font-semibold hover:from-teal-400 hover:to-blue-400 transition-all">
-                        Select Image
-                      </button>
-                    </div>
+                    ) : (
+                      <div className="flex flex-col h-full">
+                        <div className="relative rounded-xl overflow-hidden mb-4 border border-white/10 max-h-64 flex bg-black/50 justify-center">
+                          <img src={imagePreview!} alt="Preview" className="h-full object-contain" />
+                          <button
+                            onClick={() => { setSelectedImage(null); setImagePreview(null); setDiagnosis(null); }}
+                            className="absolute top-2 right-2 p-1 bg-black/50 rounded-full hover:bg-black/80 text-white"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
 
-                    <div className="mt-6 space-y-3">
+                        {!diagnosis && !isDiagnosing && (
+                          <button
+                            onClick={handleDiagnose}
+                            className="w-full py-3 bg-gradient-to-r from-teal-500 to-blue-500 rounded-lg font-bold hover:shadow-lg hover:shadow-teal-500/20 transition-all mb-4"
+                          >
+                            Run Diagnosis
+                          </button>
+                        )}
+
+                        {isDiagnosing && (
+                          <div className="text-center py-8">
+                            <div className="w-8 h-8 border-2 border-teal-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                            <p className="text-teal-400 text-sm animate-pulse">Analyzing image patterns...</p>
+                          </div>
+                        )}
+
+                        {diagnosis && (
+                          <div className={`mt-2 p-4 rounded-lg border ${diagnosis.status === 'Healthy' ? 'bg-emerald-500/10 border-emerald-500/30' :
+                            diagnosis.status === 'error' ? 'bg-red-500/10 border-red-500/30' :
+                              diagnosis.status === 'rate_limit' ? 'bg-yellow-500/10 border-yellow-500/30' :
+                                'bg-orange-500/10 border-orange-500/30'
+                            }`}>
+                            <div className="flex justify-between items-start mb-2">
+                              <div>
+                                <p className="text-xs text-slate-400 uppercase tracking-wider">Diagnosis</p>
+                                <h4 className={`text-lg font-bold ${diagnosis.status === 'Healthy' ? 'text-emerald-400' :
+                                  diagnosis.status === 'rate_limit' ? 'text-yellow-400' :
+                                    'text-orange-400'
+                                  }`}>{diagnosis.disease_name}</h4>
+                              </div>
+                              {diagnosis.confidence !== 0 && (
+                                <div className="text-right">
+                                  <p className="text-xs text-slate-400">Confidence</p>
+                                  <p className="font-mono text-white">{diagnosis.confidence}</p>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="mt-3 pt-3 border-t border-white/10">
+                              <p className="text-xs text-slate-400 mb-1">Analysis & Reasoning</p>
+                              <p className="text-sm text-slate-200 leading-relaxed">{diagnosis.reasoning}</p>
+                            </div>
+
+                            {diagnosis.status === 'Infected' && (
+                              <div className="mt-3 flex gap-2">
+                                <button className="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded border border-white/10 transition-colors">
+                                  View Treatment Plan
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="mt-6 space-y-3 border-t border-white/5 pt-4">
                       <div className="flex items-center gap-2 text-xs text-slate-400">
                         <CheckCircle2 className="w-4 h-4 text-green-400" />
                         <span>Supports: JPG, PNG (Max 10MB)</span>
@@ -752,10 +880,6 @@ export default function App() {
                       <div className="flex items-center gap-2 text-xs text-slate-400">
                         <CheckCircle2 className="w-4 h-4 text-green-400" />
                         <span>Detects 15+ common fish diseases</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-slate-400">
-                        <CheckCircle2 className="w-4 h-4 text-green-400" />
-                        <span>95% accuracy rate</span>
                       </div>
                     </div>
                   </div>

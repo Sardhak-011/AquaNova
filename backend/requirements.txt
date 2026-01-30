@@ -6,3 +6,6 @@ uvicorn
 openpyxl
 numpy
 httpx
+google-generativeai
+python-dotenv
+python-multipart

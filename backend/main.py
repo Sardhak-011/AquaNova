@@ -1,10 +1,11 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
 from logic import ExpertRules
 from data_loader import DatasetStreamer
 from weather_service import WeatherService
+from cv_service import CVService
 import joblib
 import pandas as pd
 
@@ -17,6 +18,7 @@ app = FastAPI(title="AquaNova Water Quality Predictor", version="1.0")
 CSV_PATH = "/Users/abhi/Documents/Projects/AquaNova/dataset/Water Quality Monitoring Dataset_ Ireland.csv"
 streamer = DatasetStreamer(CSV_PATH)
 weather_service = WeatherService()
+cv_service = CVService()
 
 # Configure CORS
 app.add_middleware(
@@ -200,7 +202,7 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
+load_dotenv(override=True)
 weather_service.api_key = os.getenv("OPENWEATHER_API_KEY") or weather_service.api_key
 
 # Configure Gemini
@@ -249,3 +251,19 @@ async def chat_with_aquagpt(request: ChatRequest):
     except Exception as e:
         print(f"Gemini Error: {e}")
         return {"response": "I'm having trouble connecting to my knowledge base right now. Please try again."}
+
+@app.post("/api/diagnose")
+async def diagnose_fish(file: UploadFile = File(...)):
+    """
+    Analyze uploaded fish image using Computer Vision (Gemini).
+    """
+    print(f"Received diagnose request. File: {file.filename}")
+    try:
+        contents = await file.read()
+        print(f"Read {len(contents)} bytes from file.")
+        result = await cv_service.diagnose_image(contents)
+        print("Diagnosis result received from service.")
+        return result
+    except Exception as e:
+        print(f"Error in diagnose endpoint: {e}")
+        return {"error": f"Upload failed: {str(e)}"}

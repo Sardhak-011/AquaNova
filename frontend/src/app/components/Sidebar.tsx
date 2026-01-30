@@ -9,8 +9,6 @@ export function Sidebar({ activePage, onNavigate }: SidebarProps) {
   const navItems = [
     { id: "live", label: "Live Monitor", icon: Activity },
     { id: "predictive", label: "Predictive Analytics", icon: TrendingUp },
-    { id: "health", label: "Fish Health AI", icon: Brain },
-    { id: "settings", label: "Settings", icon: Settings },
   ];
 
   return (
@@ -37,11 +35,10 @@ export function Sidebar({ activePage, onNavigate }: SidebarProps) {
             <button
               key={item.id}
               onClick={() => onNavigate(item.id)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                isActive
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${isActive
                   ? "bg-teal-500/20 text-teal-300 border border-teal-500/30"
                   : "text-slate-400 hover:bg-slate-800/50 hover:text-white"
-              }`}
+                }`}
             >
               <Icon className="w-5 h-5" />
               <span className="text-sm font-medium">{item.label}</span>
