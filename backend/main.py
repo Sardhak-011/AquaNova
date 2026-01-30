@@ -4,6 +4,7 @@ from pydantic import BaseModel
 import os
 from logic import ExpertRules
 from data_loader import DatasetStreamer
+from weather_service import WeatherService
 import joblib
 import pandas as pd
 
@@ -15,6 +16,7 @@ app = FastAPI(title="AquaNova Water Quality Predictor", version="1.0")
 # Use absolute path for reliability in this environment
 CSV_PATH = "/Users/abhi/Documents/Projects/AquaNova/dataset/Water Quality Monitoring Dataset_ Ireland.csv"
 streamer = DatasetStreamer(CSV_PATH)
+weather_service = WeatherService()
 
 # Configure CORS
 app.add_middleware(
@@ -143,16 +145,48 @@ async def predict_disease_risk(data: WaterQualityInput):
 
 class ForecastRequest(BaseModel):
     history: list # List of sensor data dicts
+    timeframe: str = "5m" # Default to 5 minutes
 
 @app.post("/api/forecast")
 def get_forecast(request: ForecastRequest):
     from logic import Forecaster
-    start_time, projections, insights = Forecaster.predict_trends(request.history)
+    start_time, projections, insights = Forecaster.predict_trends(request.history, request.timeframe)
     return {
         "start_time": start_time,
         "projections": projections,
         "insights": insights
     }
+
+@app.get("/api/weather-impact")
+async def get_weather_impact(abnormal: bool = False):
+    """
+    Get real-time weather data and its impact on water quality.
+    """
+    try:
+        current_weather = await weather_service.get_current_weather(abnormal=abnormal)
+        forecast = await weather_service.get_forecast() # Forecast mocking handled inside service if needed
+        
+        impact_analysis = weather_service.analyze_impact(current_weather, forecast)
+        
+        # Add AQI to weather response
+        aqi = weather_service._get_mock_aqi(abnormal=abnormal)
+        
+        return {
+            "weather": {
+                "temp": current_weather['main']['temp'] if current_weather else None,
+                "humidity": current_weather['main']['humidity'] if current_weather else None,
+                "pressure": current_weather['main']['pressure'] if current_weather else None,
+                "wind_speed": current_weather['wind']['speed'] if current_weather else None,
+                "aqi": aqi,
+                "access":  "Connected" if current_weather else "Failed (Check API Key)",
+                "description": current_weather['weather'][0]['description'] if current_weather else "N/A",
+                "icon": current_weather['weather'][0]['icon'] if current_weather else None
+            },
+            "impact_analysis": impact_analysis,
+            "digital_twin_location": "Burrishoole Catchment, Ireland"
+        }
+    except Exception as e:
+        return {"error": f"Weather analysis failed: {str(e)}"}
 
 @app.get("/")
 async def root():
@@ -167,6 +201,7 @@ from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+weather_service.api_key = os.getenv("OPENWEATHER_API_KEY") or weather_service.api_key
 
 # Configure Gemini
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")

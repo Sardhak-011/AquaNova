@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
-import { Activity, TrendingUp, TrendingDown, ArrowRight, AlertTriangle, Stethoscope, Droplets, Thermometer, Wind, Eye, FlaskConical } from "lucide-react";
+import { Activity, TrendingUp, TrendingDown, ArrowRight, AlertTriangle, Stethoscope, Droplets, Thermometer, Wind, Eye, FlaskConical, CalendarClock } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/app/components/ui/select";
+import { WeatherWidget } from './WeatherWidget'; // Import Widget
 
 interface PredictiveAnalysisProps {
     history: any[];
@@ -13,6 +15,7 @@ export function PredictiveAnalysis({ history, currentData }: PredictiveAnalysisP
     const [insights, setInsights] = useState<string[]>([]);
     const [solutions, setSolutions] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
+    const [timeframe, setTimeframe] = useState<string>("5m");
 
     useEffect(() => {
         // Fetch Forecasts (Existing Logic)
@@ -23,7 +26,7 @@ export function PredictiveAnalysis({ history, currentData }: PredictiveAnalysisP
                     const response = await fetch('http://localhost:8000/api/forecast', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ history })
+                        body: JSON.stringify({ history, timeframe }) // Pass timeframe
                     });
                     const data = await response.json();
                     if (data.projections) {
@@ -64,7 +67,7 @@ export function PredictiveAnalysis({ history, currentData }: PredictiveAnalysisP
         };
         fetchSolutions();
 
-    }, [history, currentData]);
+    }, [history, currentData, timeframe]); // Add timeframe dependency
 
     // Helper to merge history and forecast for a parameter
     const getChartData = (param: string) => {
@@ -132,13 +135,31 @@ export function PredictiveAnalysis({ history, currentData }: PredictiveAnalysisP
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Weather Widget */}
+                <div className="lg:col-span-3">
+                    <WeatherWidget />
+                </div>
+
                 {/* Insights Panel */}
                 <Card className="lg:col-span-3 bg-gradient-to-r from-indigo-900/40 to-slate-900/40 border-indigo-500/20">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-indigo-300">
                             <TrendingUp className="w-5 h-5" />
-                            Trend Forecasts (Next 5 Mins)
+                            Trend Forecasts
                         </CardTitle>
+                        <div className="flex items-center gap-2">
+                            <CalendarClock className="w-4 h-4 text-slate-400" />
+                            <Select value={timeframe} onValueChange={setTimeframe}>
+                                <SelectTrigger className="w-[120px] bg-slate-900/50 border-indigo-500/30 text-indigo-200 h-8 text-xs">
+                                    <SelectValue placeholder="Timeframe" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-slate-900 border-indigo-500/30 text-indigo-200">
+                                    <SelectItem value="5m">Next 5 Mins</SelectItem>
+                                    <SelectItem value="1h">Next 1 Hour</SelectItem>
+                                    <SelectItem value="24h">Next 24 Hours</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </CardHeader>
                     <CardContent>
                         {insights.length > 0 ? (
@@ -171,50 +192,52 @@ export function PredictiveAnalysis({ history, currentData }: PredictiveAnalysisP
             </div>
 
             {/* Simulation Risk Analysis - MOVED TO BOTTOM */}
-            {solutions.length > 0 && (
-                <div className="space-y-4 pt-8 border-t border-white/10">
-                    <div className="flex items-center gap-2 mb-2">
-                        <AlertTriangle className="w-6 h-6 text-red-400 animate-pulse" />
-                        <h2 className="text-xl font-bold text-red-100">Simulation Risk Analysis & Solutions</h2>
-                    </div>
+            {
+                solutions.length > 0 && (
+                    <div className="space-y-4 pt-8 border-t border-white/10">
+                        <div className="flex items-center gap-2 mb-2">
+                            <AlertTriangle className="w-6 h-6 text-red-400 animate-pulse" />
+                            <h2 className="text-xl font-bold text-red-100">Simulation Risk Analysis & Solutions</h2>
+                        </div>
 
-                    {/* Scrollable Container */}
-                    <div className="max-h-[600px] overflow-y-auto pr-2 space-y-6 custom-scrollbar">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {solutions.map((sol, i) => (
-                                <Card key={i} className={`border-l-4 ${sol.severity === 'critical' ? 'border-l-red-500 bg-red-950/20' : 'border-l-orange-500 bg-orange-950/20'} border-white/10 backdrop-blur-xl shrink-0`}>
-                                    <CardHeader>
-                                        <div className="flex items-center justify-between">
-                                            <CardTitle className={`text-lg ${sol.severity === 'critical' ? 'text-red-300' : 'text-orange-300'} flex items-center gap-2`}>
-                                                {sol.param === 'Temperature' && <Thermometer className="w-5 h-5" />}
-                                                {sol.param === 'Dissolved Oxygen' && <Wind className="w-5 h-5" />}
-                                                {sol.param === 'pH' && <FlaskConical className="w-5 h-5" />}
-                                                {sol.param === 'Ammonia' && <FlaskConical className="w-5 h-5" />}
-                                                {sol.param === 'Turbidity' && <Eye className="w-5 h-5" />}
-                                                {sol.issue}
-                                            </CardTitle>
-                                            <span className="text-xs uppercase px-2 py-1 rounded bg-black/30 font-bold tracking-wider">{sol.severity}</span>
-                                        </div>
-                                        <CardDescription className="text-slate-300 mt-2 font-medium">
-                                            Possible Outcome: {sol.risk}
-                                        </CardDescription>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div className="bg-slate-900/50 p-4 rounded-lg border border-white/5">
-                                            <h4 className="text-sm font-bold text-emerald-400 mb-2 flex items-center gap-2">
-                                                <Stethoscope className="w-4 h-4" /> Recommended Solution
-                                            </h4>
-                                            <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line">
-                                                {sol.solution.replace(/\. (\d)/g, '.\n$1')}
-                                            </p>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            ))}
+                        {/* Scrollable Container */}
+                        <div className="max-h-[600px] overflow-y-auto pr-2 space-y-6 custom-scrollbar">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {solutions.map((sol, i) => (
+                                    <Card key={i} className={`border-l-4 ${sol.severity === 'critical' ? 'border-l-red-500 bg-red-950/20' : 'border-l-orange-500 bg-orange-950/20'} border-white/10 backdrop-blur-xl shrink-0`}>
+                                        <CardHeader>
+                                            <div className="flex items-center justify-between">
+                                                <CardTitle className={`text-lg ${sol.severity === 'critical' ? 'text-red-300' : 'text-orange-300'} flex items-center gap-2`}>
+                                                    {sol.param === 'Temperature' && <Thermometer className="w-5 h-5" />}
+                                                    {sol.param === 'Dissolved Oxygen' && <Wind className="w-5 h-5" />}
+                                                    {sol.param === 'pH' && <FlaskConical className="w-5 h-5" />}
+                                                    {sol.param === 'Ammonia' && <FlaskConical className="w-5 h-5" />}
+                                                    {sol.param === 'Turbidity' && <Eye className="w-5 h-5" />}
+                                                    {sol.issue}
+                                                </CardTitle>
+                                                <span className="text-xs uppercase px-2 py-1 rounded bg-black/30 font-bold tracking-wider">{sol.severity}</span>
+                                            </div>
+                                            <CardDescription className="text-slate-300 mt-2 font-medium">
+                                                Possible Outcome: {sol.risk}
+                                            </CardDescription>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="bg-slate-900/50 p-4 rounded-lg border border-white/5">
+                                                <h4 className="text-sm font-bold text-emerald-400 mb-2 flex items-center gap-2">
+                                                    <Stethoscope className="w-4 h-4" /> Recommended Solution
+                                                </h4>
+                                                <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line">
+                                                    {sol.solution.replace(/\. (\d)/g, '.\n$1')}
+                                                </p>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 }

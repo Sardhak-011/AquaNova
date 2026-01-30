@@ -258,19 +258,24 @@ from datetime import datetime, timedelta
 
 class Forecaster:
     @staticmethod
-    def predict_trends(history: list, forecast_steps: int = 20):
+    def predict_trends(history: list, timeframe: str = '5m'):
         """
         Predict future trends using Linear Regression.
         
         Args:
             history: List of dicts containing historical sensor data.
-            forecast_steps: Number of future steps to predict (5s intervals).
-            
-        Returns:
-            start_time: ISO timestamp of the last data point.
-            projections: Dict of list of predicted values for each parameter.
-            insights: List of textual insights about trends.
+            timeframe: Prediction horizon ('5m', '1h', '24h').
         """
+        # Determine steps based on timeframe (assuming 5s data interval)
+        # 5m = 60 steps
+        # 1h = 720 steps
+        # 24h = 17280 steps
+        steps_map = {
+            '5m': 60,
+            '1h': 720,
+            '24h': 17280
+        }
+        forecast_steps = steps_map.get(timeframe, 60)
         if len(history) < 5:
             return None, {}, [] # Not enough data
             

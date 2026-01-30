@@ -5,3 +5,4 @@ fastapi
 uvicorn
 openpyxl
 numpy
+httpx
